@@ -25,7 +25,7 @@ class ChatNotificationService {
 
   static Future<void> initialize() async {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosInit = IOSInitializationSettings();
+    const iosInit = DarwinInitializationSettings();
     await _plugin.initialize(
       const InitializationSettings(
         android: androidInit,
@@ -40,7 +40,7 @@ class ChatNotificationService {
         const AndroidNotificationChannel(
           _channelId,
           _channelName,
-          'Alerts when someone sends a message during a live stream.',
+          description: 'Alerts when someone sends a message during a live stream.',
           importance: Importance.high,
         ),
       );
@@ -120,11 +120,12 @@ class ChatNotificationService {
                 android: AndroidNotificationDetails(
                   _channelId,
                   _channelName,
-                  'New messages while you are in a live audio session.',
+                  channelDescription:
+                      'New messages while you are in a live audio session.',
                   importance: Importance.high,
                   priority: Priority.high,
                 ),
-                iOS: const IOSNotificationDetails(
+                iOS: const DarwinNotificationDetails(
                   presentAlert: true,
                   presentBadge: true,
                   presentSound: true,
