@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "78156872254",
+    "project_id": "smas-57b80",
+    "storage_bucket": "smas-57b80.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:78156872254:android:e3fa3da4b25f2c2840ef6f",
+        "android_client_info": {
+          "package_name": "com.sportsmagician.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDF_q3PGKqR6-oh0u8iQbGk-53ElvGnOcA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

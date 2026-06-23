@@ -29,32 +29,33 @@ class DefaultFirebaseOptions {
     }
   }
 
+  // NOTE: No dedicated Firebase Web app was provided for project smas-57b80.
+  // These web values reuse the Android credentials so the project reference is
+  // correct; if you ship Flutter web, register a Web app in the smas-57b80
+  // console and replace apiKey/appId/measurementId with that app's config.
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDnSdq0hxP0xmrZT-QuBM8Gfh2jeKj0QT0',
-    appId: '1:527934608433:web:95d450cb32e2f1513fb110',
-    messagingSenderId: '527934608433',
-    projectId: 'sportsmagician-audio',
-    authDomain: 'sportsmagician-audio.firebaseapp.com',
-    storageBucket: 'sportsmagician-audio.firebasestorage.app',
-    measurementId: 'G-CMEYMHRY34',
+    apiKey: 'AIzaSyDF_q3PGKqR6-oh0u8iQbGk-53ElvGnOcA',
+    appId: '1:78156872254:android:e3fa3da4b25f2c2840ef6f',
+    messagingSenderId: '78156872254',
+    projectId: 'smas-57b80',
+    authDomain: 'smas-57b80.firebaseapp.com',
+    storageBucket: 'smas-57b80.firebasestorage.app',
   );
 
-  /// Replace `appId` with your Android mobile SDK app ID when available.
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDnSdq0hxP0xmrZT-QuBM8Gfh2jeKj0QT0',
-    appId: '1:527934608433:web:95d450cb32e2f1513fb110',
-    messagingSenderId: '527934608433',
-    projectId: 'sportsmagician-audio',
-    storageBucket: 'sportsmagician-audio.firebasestorage.app',
+    apiKey: 'AIzaSyDF_q3PGKqR6-oh0u8iQbGk-53ElvGnOcA',
+    appId: '1:78156872254:android:e3fa3da4b25f2c2840ef6f',
+    messagingSenderId: '78156872254',
+    projectId: 'smas-57b80',
+    storageBucket: 'smas-57b80.firebasestorage.app',
   );
 
-  /// Replace `appId` with your iOS mobile SDK app ID when available.
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDnSdq0hxP0xmrZT-QuBM8Gfh2jeKj0QT0',
-    appId: '1:527934608433:web:95d450cb32e2f1513fb110',
-    messagingSenderId: '527934608433',
-    projectId: 'sportsmagician-audio',
-    storageBucket: 'sportsmagician-audio.firebasestorage.app',
-    iosBundleId: 'com.example.spa',
+    apiKey: 'AIzaSyB_cbK1oGjPyZeyoRK3xevOJaZxiCLGzEM',
+    appId: '1:78156872254:ios:ff774aed580c86ca40ef6f',
+    messagingSenderId: '78156872254',
+    projectId: 'smas-57b80',
+    storageBucket: 'smas-57b80.firebasestorage.app',
+    iosBundleId: 'com.sportsmagician.com',
   );
 }
