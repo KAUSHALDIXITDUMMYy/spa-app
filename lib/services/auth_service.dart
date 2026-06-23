@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -18,7 +19,11 @@ class AuthService {
 
   Future<UserProfile?> getUserProfile(String uid, {int retry = 0}) async {
     try {
-      final snap = await _db.collection('users').doc(uid).get();
+      final snap = await _db
+          .collection('users')
+          .doc(uid)
+          .get()
+          .timeout(const Duration(seconds: 15));
       if (snap.exists) {
         return UserProfile.fromMap(uid, snap.data()!);
       }
@@ -110,55 +115,65 @@ class AuthService {
   Future<String?> signIn(String email, String password) async {
     final lower = email.trim().toLowerCase();
 
-    final pendingSnap = await _db
-        .collection('users')
-        .where('email', isEqualTo: lower)
-        .limit(1)
-        .get();
+    try {
+      final pendingSnap = await _db
+          .collection('users')
+          .where('email', isEqualTo: lower)
+          .limit(1)
+          .get()
+          .timeout(const Duration(seconds: 15));
 
-    if (pendingSnap.docs.isNotEmpty) {
-      final doc = pendingSnap.docs.first;
-      final data = doc.data();
-      final isPending = data['isPending'] == true;
-      final pendingPw = data['pendingPassword'] as String?;
-      if (isPending && pendingPw == password) {
-        final cred =
-            await _auth.createUserWithEmailAndPassword(email: lower, password: password);
-        final newUid = cred.user!.uid;
-        final profile = UserProfile.fromMap(doc.id, data);
+      if (pendingSnap.docs.isNotEmpty) {
+        final doc = pendingSnap.docs.first;
+        final data = doc.data();
+        final isPending = data['isPending'] == true;
+        final pendingPw = data['pendingPassword'] as String?;
+        if (isPending && pendingPw == password) {
+          final cred = await _auth.createUserWithEmailAndPassword(
+            email: lower,
+            password: password,
+          );
+          final newUid = cred.user!.uid;
+          final profile = UserProfile.fromMap(doc.id, data);
 
-        await _migratePendingUser(
-          oldPendingId: doc.id,
-          newUid: newUid,
-          pendingData: profile,
-        );
+          await _migratePendingUser(
+            oldPendingId: doc.id,
+            newUid: newUid,
+            pendingData: profile,
+          );
 
-        await _db.collection('users').doc(newUid).set({
-          'uid': newUid,
-          'email': cred.user!.email,
-          'role': data['role'],
-          'displayName': data['displayName'],
-          'createdAt': data['createdAt'],
-          'isActive': data['isActive'],
-          'allowChat': data['allowChat'] ?? false,
-          'isPending': false,
-          'pendingPassword': null,
-        });
-
-        if (data['role'] == 'subscriber') {
-          final sessionId = const Uuid().v4();
-          await _db.collection('users').doc(newUid).update({
-            'sessionId': sessionId,
-            'lastLoginAt': FieldValue.serverTimestamp(),
+          await _db.collection('users').doc(newUid).set({
+            'uid': newUid,
+            'email': cred.user!.email,
+            'role': data['role'],
+            'displayName': data['displayName'],
+            'createdAt': data['createdAt'],
+            'isActive': data['isActive'],
+            'allowChat': data['allowChat'] ?? false,
+            'isPending': false,
+            'pendingPassword': null,
           });
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(_sessionKey, sessionId);
-        }
 
-        await doc.reference.delete();
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-        return null;
+          final pendingRole =
+              (data['role'] as String? ?? 'subscriber').toLowerCase().trim();
+          if (pendingRole == 'subscriber') {
+            final sessionId = const Uuid().v4();
+            await _db.collection('users').doc(newUid).update({
+              'sessionId': sessionId,
+              'lastLoginAt': FieldValue.serverTimestamp(),
+            });
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_sessionKey, sessionId);
+          }
+
+          await doc.reference.delete();
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          return null;
+        }
       }
+    } catch (_) {
+      // Pending-user lookup requires Firestore rules that allow pre-auth reads.
+      // If denied, continue with normal email/password sign-in.
     }
 
     try {
@@ -166,7 +181,11 @@ class AuthService {
           await _auth.signInWithEmailAndPassword(email: lower, password: password);
       final uid = cred.user!.uid;
       final profile = await getUserProfile(uid);
-      if (profile == null) return 'Could not load profile.';
+      if (profile == null) {
+        await _auth.signOut();
+        return 'Could not load your profile. Your account may be missing in Firestore '
+            '(users/$uid) or Firestore rules may be blocking access.';
+      }
 
       if (profile.role == 'subscriber') {
         final prefs = await SharedPreferences.getInstance();
@@ -206,6 +225,16 @@ class AuthService {
       return null;
     } on FirebaseAuthException catch (e) {
       return e.message ?? 'Sign in failed';
+    } on FirebaseException catch (e) {
+      await _auth.signOut();
+      if (e.code == 'permission-denied') {
+        return 'Firestore denied access to your profile. Update security rules in '
+            'Firebase project smas-57b80 so signed-in users can read users/{uid}.';
+      }
+      return e.message ?? 'Could not access account data. Please try again.';
+    } catch (_) {
+      await _auth.signOut();
+      return 'Sign in failed. Check your connection and try again.';
     }
   }
 

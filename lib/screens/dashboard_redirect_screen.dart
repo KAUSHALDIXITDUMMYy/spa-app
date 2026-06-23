@@ -13,7 +13,7 @@ class DashboardRedirectScreen extends StatelessWidget {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;
-      final role = auth.profile?.role;
+      final role = auth.profile?.role.toLowerCase().trim();
       switch (role) {
         case 'admin':
           context.go('/admin');
@@ -25,7 +25,7 @@ class DashboardRedirectScreen extends StatelessWidget {
           context.go('/subscriber');
           break;
         default:
-          context.go('/');
+          context.go('/unauthorized');
       }
     });
 

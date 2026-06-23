@@ -30,14 +30,20 @@ class _LoginScreenState extends State<LoginScreen> {
       _busy = true;
       _error = null;
     });
-    final auth = context.read<AuthNotifier>();
-    final err = await auth.signIn(_email.text.trim(), _password.text);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (err != null) {
-      setState(() => _error = err);
-    } else {
-      context.go('/dashboard');
+    try {
+      final auth = context.read<AuthNotifier>();
+      final err = await auth.signIn(_email.text.trim(), _password.text);
+      if (!mounted) return;
+      if (err != null) {
+        setState(() => _error = err);
+      } else {
+        context.go('/dashboard');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Sign in failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -51,9 +57,26 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
 
-    if (auth.firebaseUser != null && auth.profile != null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+    if (auth.firebaseUser != null && auth.profile == null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                const Text('Loading your profile…'),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => auth.signOut(),
+                  child: const Text('Sign out and try again'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 

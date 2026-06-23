@@ -50,7 +50,7 @@ class UserProfile {
     return UserProfile(
       uid: uid,
       email: data['email'] as String? ?? '',
-      role: data['role'] as String? ?? 'subscriber',
+      role: (data['role'] as String? ?? 'subscriber').toLowerCase().trim(),
       displayName: data['displayName'] as String?,
       createdAt: _date(data['createdAt']),
       isActive: data['isActive'] as bool? ?? true,
