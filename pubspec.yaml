@@ -49,6 +49,7 @@ dependencies:
   audio_session: ^0.2.3
   agora_token_generator: ^1.0.0
   flutter_local_notifications: ^19.0.0
+  http: ^1.4.0
 
 dev_dependencies:
   flutter_test:
@@ -114,3 +115,4 @@ flutter_launcher_icons:
   adaptive_icon_background: "#1B2238"
   adaptive_icon_foreground: assets/app_icon.png
   remove_alpha_ios: true
+  min_sdk_android: 21

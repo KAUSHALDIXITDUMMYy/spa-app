@@ -7,6 +7,10 @@ import 'package:flutter/foundation.dart';
 
 import '../constants/agora_config.dart';
 
+/// Playback/recording gain (Agora range 0–400; 100 = SDK default).
+const int _kAudiencePlaybackVolume = 85;
+const int _kPublisherRecordingVolume = 72;
+
 String _joinFailureHint(ConnectionChangedReasonType reason) {
   switch (reason) {
     case ConnectionChangedReasonType.connectionChangedInvalidAppId:
@@ -55,6 +59,31 @@ class AgoraLiveService {
     _eventHandler = null;
   }
 
+  Future<void> _applyVoiceProcessing(RtcEngine engine, LiveRole role) async {
+    await engine.setAudioScenario(AudioScenarioType.audioScenarioMeeting);
+    await engine.setAudioProfile(
+      profile: AudioProfileType.audioProfileSpeechStandard,
+      scenario: AudioScenarioType.audioScenarioMeeting,
+    );
+    try {
+      await engine.setAINSMode(
+        enabled: true,
+        mode: AudioAinsMode.ainsModeBalanced,
+      );
+    } catch (_) {}
+
+    if (role == LiveRole.publisher) {
+      try {
+        await engine.adjustRecordingSignalVolume(_kPublisherRecordingVolume);
+      } catch (_) {}
+    } else {
+      try {
+        await engine.adjustPlaybackSignalVolume(_kAudiencePlaybackVolume);
+        await engine.setDefaultAudioRouteToSpeakerphone(true);
+      } catch (_) {}
+    }
+  }
+
   Future<RtcEngine> _ensureEngine() async {
     if (_engine != null) return _engine!;
     final engine = createAgoraRtcEngine();
@@ -65,8 +94,10 @@ class AgoraLiveService {
       ),
     );
     await engine.enableAudio();
-    await engine.setAudioScenario(
-      AudioScenarioType.audioScenarioGameStreaming,
+    await engine.setAudioScenario(AudioScenarioType.audioScenarioMeeting);
+    await engine.setAudioProfile(
+      profile: AudioProfileType.audioProfileSpeechStandard,
+      scenario: AudioScenarioType.audioScenarioMeeting,
     );
     if (kDebugMode) {
       await engine.setLogLevel(LogLevel.logLevelInfo);
@@ -95,13 +126,7 @@ class AgoraLiveService {
     _uid = uid ?? randomUid();
     final token = _buildToken(channelId, _uid);
 
-    if (role == LiveRole.audience) {
-      // Match host profile: game streaming tends to give stronger playback levels than chatroom.
-      await engine.setAudioScenario(AudioScenarioType.audioScenarioGameStreaming);
-      await engine.setDefaultAudioRouteToSpeakerphone(true);
-    } else {
-      await engine.setAudioScenario(AudioScenarioType.audioScenarioGameStreaming);
-    }
+    await _applyVoiceProcessing(engine, role);
 
     final joinDone = Completer<void>();
     var awaitingJoinResult = false;
@@ -114,15 +139,18 @@ class AgoraLiveService {
       if (!joinDone.isCompleted) joinDone.completeError(error);
     }
 
-    Future<void> boostAudiencePlayback(RtcEngine rtc, int remoteUid) async {
+    Future<void> tuneAudiencePlayback(RtcEngine rtc, int remoteUid) async {
       if (role != LiveRole.audience) return;
       try {
         await rtc.muteAllRemoteAudioStreams(false);
         if (remoteUid > 0) {
           await rtc.muteRemoteAudioStream(uid: remoteUid, mute: false);
-          await rtc.adjustUserPlaybackSignalVolume(uid: remoteUid, volume: 400);
+          await rtc.adjustUserPlaybackSignalVolume(
+            uid: remoteUid,
+            volume: _kAudiencePlaybackVolume,
+          );
         }
-        await rtc.adjustPlaybackSignalVolume(400);
+        await rtc.adjustPlaybackSignalVolume(_kAudiencePlaybackVolume);
         await rtc.setDefaultAudioRouteToSpeakerphone(true);
         await rtc.setEnableSpeakerphone(true);
       } catch (_) {}
@@ -145,7 +173,7 @@ class AgoraLiveService {
       },
       onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
         if (role == LiveRole.audience) {
-          unawaited(boostAudiencePlayback(engine, remoteUid));
+          unawaited(tuneAudiencePlayback(engine, remoteUid));
         }
       },
       onRemoteAudioStateChanged:
@@ -154,7 +182,7 @@ class AgoraLiveService {
         if (role != LiveRole.audience) return;
         if (state == RemoteAudioState.remoteAudioStateStarting ||
             state == RemoteAudioState.remoteAudioStateDecoding) {
-          unawaited(boostAudiencePlayback(engine, remoteUid));
+          unawaited(tuneAudiencePlayback(engine, remoteUid));
         }
       },
     );
@@ -190,15 +218,10 @@ class AgoraLiveService {
         ),
       );
 
+      await _applyVoiceProcessing(engine, role);
+
       if (role == LiveRole.audience) {
-        await boostAudiencePlayback(engine, 0);
-        unawaited(() async {
-          for (final ms in [250, 900, 2200]) {
-            await Future<void>.delayed(Duration(milliseconds: ms));
-            if (!_joined || !identical(_engine, engine)) return;
-            await boostAudiencePlayback(engine, 0);
-          }
-        }());
+        await tuneAudiencePlayback(engine, 0);
       }
       _joined = true;
     } catch (e) {
@@ -227,6 +250,7 @@ class AgoraLiveService {
         if (_joined) {
           try {
             await engine.adjustPlaybackSignalVolume(100);
+            await engine.adjustRecordingSignalVolume(100);
           } catch (_) {}
         }
         await engine.leaveChannel();
