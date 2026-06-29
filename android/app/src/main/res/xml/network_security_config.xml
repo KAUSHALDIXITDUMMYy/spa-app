@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- API is HTTP-only on the VPS IP (no domain / SSL). -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">38.248.12.6</domain>
+        <domain includeSubdomains="false">217.216.87.128</domain>
+    </domain-config>
+</network-security-config>

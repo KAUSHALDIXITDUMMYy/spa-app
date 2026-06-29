@@ -11,6 +11,7 @@ import '../../models/scheduled_call.dart';
 import '../../models/subscriber_permission.dart';
 import '../../services/admin_broadcasts_repository.dart';
 import '../../services/agora_live_service.dart';
+import '../../services/api_client.dart';
 import '../../services/chat_notification_service.dart';
 import '../../services/chat_repository.dart';
 import '../../services/daily_schedule_repository.dart';
@@ -34,7 +35,8 @@ class SubscriberHomeScreen extends StatefulWidget {
 class _SubscriberHomeScreenState extends State<SubscriberHomeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
-  final _agora = AgoraLiveService();
+  AgoraLiveService? _agora;
+  bool _agoraReady = false;
   Timer? _poll;
 
   List<SubscriberPermission> _adHoc = [];
@@ -73,6 +75,10 @@ class _SubscriberHomeScreenState extends State<SubscriberHomeScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _chatNotifSvc ??= context.read<ChatNotificationService>();
+    if (!_agoraReady) {
+      _agora = AgoraLiveService(context.read<ApiClient>());
+      _agoraReady = true;
+    }
   }
 
   @override
@@ -82,7 +88,7 @@ class _SubscriberHomeScreenState extends State<SubscriberHomeScreen>
     _scheduleDayTimer?.cancel();
     _tabs.dispose();
     unawaited(ListenerAudioSession.restoreDefault());
-    _agora.dispose();
+    unawaited(_agora?.dispose() ?? Future<void>.value());
     super.dispose();
   }
 
@@ -223,7 +229,11 @@ class _SubscriberHomeScreenState extends State<SubscriberHomeScreen>
         text: session.title ?? 'Sportsmagician',
         useMicrophone: false,
       );
-      await _agora.join(channelId: session.roomId, role: LiveRole.audience);
+      await _agora!.join(
+        channelId: session.roomId,
+        role: LiveRole.audience,
+        streamSessionId: session.id,
+      );
       setState(() {
         _selected = p;
         _listening = true;
@@ -241,7 +251,7 @@ class _SubscriberHomeScreenState extends State<SubscriberHomeScreen>
   }
 
   Future<void> _tearDownListeningSession() async {
-    await _agora.leave();
+    await _agora!.leave();
     await ForegroundServiceHelper.stopLiveTask();
     await ListenerAudioSession.restoreDefault();
   }

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -8,15 +7,14 @@ import '../models/user_profile.dart';
 import '../services/auth_service.dart';
 
 class AuthNotifier extends ChangeNotifier {
-  AuthNotifier(this._authService, this._db) {
+  AuthNotifier(this._authService) {
     _authSub = _authService.authStateChanges().listen(_onAuthUser);
   }
 
   final AuthService _authService;
-  final FirebaseFirestore _db;
 
   late final StreamSubscription<User?> _authSub;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _profileSub;
+  Timer? _profilePoll;
   Timer? _subscriberHeartbeat;
 
   User? firebaseUser;
@@ -25,8 +23,8 @@ class AuthNotifier extends ChangeNotifier {
 
   Future<void> _onAuthUser(User? user) async {
     firebaseUser = user;
-    await _profileSub?.cancel();
-    _profileSub = null;
+    _profilePoll?.cancel();
+    _profilePoll = null;
     _subscriberHeartbeat?.cancel();
     _subscriberHeartbeat = null;
 
@@ -41,12 +39,14 @@ class AuthNotifier extends ChangeNotifier {
     loading = false;
     notifyListeners();
 
-    _profileSub = _db.collection('users').doc(user.uid).snapshots().listen((snap) {
-      if (!snap.exists) return;
-      final next = UserProfile.fromMap(user.uid, snap.data()!);
+    _profilePoll = Timer.periodic(const Duration(seconds: 15), (_) async {
+      final u = firebaseUser;
+      if (u == null) return;
+      final next = await _authService.getUserProfile(u.uid);
+      if (next == null) return;
       profile = next;
       if (next.role == 'subscriber' && !next.isActive) {
-        _authService.signOutCurrent();
+        await _authService.signOutCurrent();
       }
       notifyListeners();
     });
@@ -55,11 +55,7 @@ class AuthNotifier extends ChangeNotifier {
       final p = profile;
       final u = firebaseUser;
       if (u == null || p == null || p.role != 'subscriber') return;
-      try {
-        await _db.collection('users').doc(u.uid).update({
-          'lastLoginAt': FieldValue.serverTimestamp(),
-        });
-      } catch (_) {}
+      await _authService.heartbeatSession();
     });
   }
 
@@ -73,12 +69,14 @@ class AuthNotifier extends ChangeNotifier {
     final u = firebaseUser;
     if (u == null) return;
     await _authService.acceptTerms(u.uid);
+    profile = await _authService.getUserProfile(u.uid);
+    notifyListeners();
   }
 
   @override
   void dispose() {
     _authSub.cancel();
-    _profileSub?.cancel();
+    _profilePoll?.cancel();
     _subscriberHeartbeat?.cancel();
     super.dispose();
   }

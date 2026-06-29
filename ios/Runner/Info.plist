@@ -56,5 +56,21 @@
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Sportsmagician uses the microphone when you broadcast live audio to subscribers.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>38.248.12.6</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>217.216.87.128</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 </dict>
 </plist>

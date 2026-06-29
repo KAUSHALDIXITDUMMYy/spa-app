@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:agora_token_generator/agora_token_generator.dart';
 import 'package:flutter/foundation.dart';
 
-import '../constants/agora_config.dart';
+import 'agora_token_service.dart';
+import 'api_client.dart';
 
 /// Playback/recording gain (Agora range 0–400; 100 = SDK default).
 const int _kAudiencePlaybackVolume = 85;
@@ -14,11 +14,11 @@ const int _kPublisherRecordingVolume = 72;
 String _joinFailureHint(ConnectionChangedReasonType reason) {
   switch (reason) {
     case ConnectionChangedReasonType.connectionChangedInvalidAppId:
-      return 'Invalid Agora App ID (check Agora Console vs app config).';
+      return 'Invalid Agora App ID (check backend Agora credentials).';
     case ConnectionChangedReasonType.connectionChangedInvalidChannelName:
       return 'Invalid channel name for Agora.';
     case ConnectionChangedReasonType.connectionChangedInvalidToken:
-      return 'Invalid token or UID mismatch vs token (check App Certificate / token build).';
+      return 'Invalid token or UID mismatch (check backend token server).';
     case ConnectionChangedReasonType.connectionChangedTokenExpired:
       return 'Token expired; try joining again.';
     case ConnectionChangedReasonType.connectionChangedRejectedByServer:
@@ -35,11 +35,16 @@ String _joinFailureHint(ConnectionChangedReasonType reason) {
 enum LiveRole { publisher, audience }
 
 /// Wraps Agora RTC for audio-only live broadcasting (matches web `mode: "live"`).
+/// Tokens and App ID come from the backend — change Agora creds on the server only.
 class AgoraLiveService {
-  AgoraLiveService();
+  AgoraLiveService(ApiClient apiClient)
+      : _tokenService = AgoraTokenService(apiClient);
+
+  final AgoraTokenService _tokenService;
 
   RtcEngine? _engine;
   RtcEngineEventHandler? _eventHandler;
+  String? _engineAppId;
   int _uid = 0;
   bool _joined = false;
 
@@ -84,12 +89,23 @@ class AgoraLiveService {
     }
   }
 
-  Future<RtcEngine> _ensureEngine() async {
-    if (_engine != null) return _engine!;
+  Future<RtcEngine> _ensureEngine(String appId) async {
+    if (_engine != null && _engineAppId == appId) return _engine!;
+
+    if (_engine != null) {
+      _unregisterHandler();
+      try {
+        await _engine!.leaveChannel();
+      } catch (_) {}
+      await _engine!.release();
+      _engine = null;
+      _engineAppId = null;
+    }
+
     final engine = createAgoraRtcEngine();
     await engine.initialize(
       RtcEngineContext(
-        appId: AgoraConfig.appId,
+        appId: appId,
         channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
       ),
     );
@@ -103,28 +119,28 @@ class AgoraLiveService {
       await engine.setLogLevel(LogLevel.logLevelInfo);
     }
     _engine = engine;
+    _engineAppId = appId;
     return engine;
-  }
-
-  String _buildToken(String channelId, int uid) {
-    return RtcTokenBuilder.buildTokenWithUid(
-      appId: AgoraConfig.appId,
-      appCertificate: AgoraConfig.appCertificate,
-      channelName: channelId,
-      uid: uid,
-      tokenExpireSeconds: AgoraConfig.tokenExpireSeconds,
-    );
   }
 
   Future<void> join({
     required String channelId,
     required LiveRole role,
+    String? streamSessionId,
     int? uid,
   }) async {
     await leave();
-    final engine = await _ensureEngine();
-    _uid = uid ?? randomUid();
-    final token = _buildToken(channelId, _uid);
+
+    final tokenInfo = await _tokenService.fetchToken(
+      channelName: channelId,
+      role: role,
+      streamSessionId: streamSessionId,
+      uid: uid,
+    );
+
+    final engine = await _ensureEngine(tokenInfo.appId);
+    _uid = tokenInfo.uid;
+    final token = tokenInfo.token;
 
     await _applyVoiceProcessing(engine, role);
 
@@ -214,7 +230,7 @@ class AgoraLiveService {
         const Duration(seconds: 25),
         onTimeout: () => throw TimeoutException(
           'Timed out joining Agora channel (no onJoinChannelSuccess within 25s). '
-          'Check token, App ID, network, and that the host is broadcasting.',
+          'Check backend Agora credentials, token, network, and that the host is broadcasting.',
         ),
       );
 
@@ -264,5 +280,6 @@ class AgoraLiveService {
     await leave();
     await _engine?.release();
     _engine = null;
+    _engineAppId = null;
   }
 }

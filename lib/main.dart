@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
 import 'router/app_router.dart';
+import 'services/api_client.dart';
 import 'services/admin_broadcasts_repository.dart';
 import 'services/admin_repository.dart';
 import 'services/auth_service.dart';
@@ -37,12 +38,15 @@ Future<void> main() async {
   await audio.configure(const AudioSessionConfiguration.speech());
 
   final firestore = FirebaseFirestore.instance;
-  final authService = AuthService(FirebaseAuth.instance, firestore);
-  final authNotifier = AuthNotifier(authService, firestore);
+  final auth = FirebaseAuth.instance;
+  final apiClient = ApiClient(auth);
+  final authService = AuthService(auth, apiClient);
+  final authNotifier = AuthNotifier(authService);
 
   runApp(SportsmagicianApp(
     authNotifier: authNotifier,
     firestore: firestore,
+    apiClient: apiClient,
   ));
 }
 
@@ -51,10 +55,12 @@ class SportsmagicianApp extends StatefulWidget {
     super.key,
     required this.authNotifier,
     required this.firestore,
+    required this.apiClient,
   });
 
   final AuthNotifier authNotifier;
   final FirebaseFirestore firestore;
+  final ApiClient apiClient;
 
   @override
   State<SportsmagicianApp> createState() => _SportsmagicianAppState();
@@ -76,6 +82,7 @@ class _SportsmagicianAppState extends State<SportsmagicianApp> {
       providers: [
         ChangeNotifierProvider.value(value: widget.authNotifier),
         Provider.value(value: fs),
+        Provider.value(value: widget.apiClient),
         Provider(create: (_) => StreamingRepository(fs)),
         Provider(create: (_) => SubscriberRepository(fs)),
         Provider(create: (_) => ScheduledCallsRepository(fs)),

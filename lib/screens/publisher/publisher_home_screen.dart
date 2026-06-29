@@ -10,6 +10,7 @@ import '../../constants/sports.dart';
 import '../../models/scheduled_call.dart';
 import '../../models/stream_session.dart';
 import '../../services/agora_live_service.dart';
+import '../../services/api_client.dart';
 import '../../services/chat_notification_service.dart';
 import '../../services/chat_repository.dart';
 import '../../widgets/stream_chat_modal.dart';
@@ -38,7 +39,8 @@ class _PublisherHomeScreenState extends State<PublisherHomeScreen> {
   final _title = TextEditingController();
   final _description = TextEditingController();
   String _sport = defaultStreamSport;
-  final _agora = AgoraLiveService();
+  AgoraLiveService? _agora;
+  bool _agoraReady = false;
 
   StreamSession? _liveSession;
   StreamSession? _lastEndedSession;
@@ -59,6 +61,10 @@ class _PublisherHomeScreenState extends State<PublisherHomeScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _chatNotifSvc ??= context.read<ChatNotificationService>();
+    if (!_agoraReady) {
+      _agora = AgoraLiveService(context.read<ApiClient>());
+      _agoraReady = true;
+    }
   }
 
   @override
@@ -66,7 +72,7 @@ class _PublisherHomeScreenState extends State<PublisherHomeScreen> {
     unawaited(_chatNotifSvc?.stopWatchingLiveSession() ?? Future<void>.value());
     _title.dispose();
     _description.dispose();
-    _agora.dispose();
+    unawaited(_agora?.dispose() ?? Future<void>.value());
     super.dispose();
   }
 
@@ -190,7 +196,11 @@ class _PublisherHomeScreenState extends State<PublisherHomeScreen> {
         channel = roomId;
       }
 
-      await _agora.join(channelId: channel, role: LiveRole.publisher);
+      await _agora!.join(
+        channelId: channel,
+        role: LiveRole.publisher,
+        streamSessionId: session.id,
+      );
 
       setState(() {
         _liveSession = session;
@@ -214,7 +224,7 @@ class _PublisherHomeScreenState extends State<PublisherHomeScreen> {
     if (s?.id == null) return;
     setState(() => _busy = true);
     try {
-      await _agora.leave();
+      await _agora!.leave();
       await repo.resetScheduledAfterBroadcast(s!.id!);
       await ForegroundServiceHelper.stopLiveTask();
       await PublisherBroadcastAudioSession.restoreDefault();
@@ -252,7 +262,11 @@ class _PublisherHomeScreenState extends State<PublisherHomeScreen> {
         text: 'Sportsmagician is using your microphone.',
         useMicrophone: true,
       );
-      await _agora.join(channelId: session.roomId, role: LiveRole.publisher);
+      await _agora!.join(
+        channelId: session.roomId,
+        role: LiveRole.publisher,
+        streamSessionId: session.id,
+      );
       setState(() {
         _liveSession = session;
         _title.text = session.title ?? '';
@@ -275,7 +289,7 @@ class _PublisherHomeScreenState extends State<PublisherHomeScreen> {
 
   Future<void> _toggleMute() async {
     final next = !_muted;
-    await _agora.muteLocalAudio(next);
+    await _agora!.muteLocalAudio(next);
     setState(() => _muted = next);
   }
 
