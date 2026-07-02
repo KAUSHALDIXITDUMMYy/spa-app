@@ -48,6 +48,11 @@ class AgoraLiveService {
   int _uid = 0;
   bool _joined = false;
 
+  // Stored for token renewal
+  String? _currentChannelId;
+  LiveRole? _currentRole;
+  String? _currentStreamSessionId;
+
   bool get isJoined => _joined;
 
   static int randomUid() {
@@ -123,6 +128,32 @@ class AgoraLiveService {
     return engine;
   }
 
+  /// Fetches a fresh token and calls renewToken on the active channel.
+  /// Agora calls onTokenPrivilegeWillExpire ~30s before expiry.
+  Future<void> _renewToken() async {
+    final channelId = _currentChannelId;
+    final role = _currentRole;
+    final engine = _engine;
+    if (channelId == null || role == null || engine == null || !_joined) return;
+
+    try {
+      final tokenInfo = await _tokenService.fetchToken(
+        channelName: channelId,
+        role: role,
+        streamSessionId: _currentStreamSessionId,
+        uid: _uid,
+      );
+      await engine.renewToken(tokenInfo.token);
+      if (kDebugMode) {
+        debugPrint('[AgoraLiveService] Token renewed successfully');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AgoraLiveService] Token renewal failed: $e');
+      }
+    }
+  }
+
   Future<void> join({
     required String channelId,
     required LiveRole role,
@@ -130,6 +161,10 @@ class AgoraLiveService {
     int? uid,
   }) async {
     await leave();
+
+    _currentChannelId = channelId;
+    _currentRole = role;
+    _currentStreamSessionId = streamSessionId;
 
     final tokenInfo = await _tokenService.fetchToken(
       channelName: channelId,
@@ -187,6 +222,14 @@ class AgoraLiveService {
           finishJoinErr(Exception('Agora connection failed: ${_joinFailureHint(reason)}'));
         }
       },
+      onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
+        // Token is about to expire — renew it to keep the stream alive.
+        unawaited(_renewToken());
+      },
+      onRequestToken: (RtcConnection connection) {
+        // Token already expired — attempt emergency renewal.
+        unawaited(_renewToken());
+      },
       onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
         if (role == LiveRole.audience) {
           unawaited(tuneAudiencePlayback(engine, remoteUid));
@@ -243,6 +286,9 @@ class AgoraLiveService {
     } catch (e) {
       _joined = false;
       _unregisterHandler();
+      _currentChannelId = null;
+      _currentRole = null;
+      _currentStreamSessionId = null;
       try {
         await engine.leaveChannel();
       } catch (_) {}
@@ -259,6 +305,9 @@ class AgoraLiveService {
   }
 
   Future<void> leave() async {
+    _currentChannelId = null;
+    _currentRole = null;
+    _currentStreamSessionId = null;
     final engine = _engine;
     if (engine == null && _eventHandler == null) return;
     try {

@@ -21,6 +21,9 @@ class AuthNotifier extends ChangeNotifier {
   UserProfile? profile;
   bool loading = true;
 
+  /// Tracks whether a profile load is in progress to avoid double-triggers.
+  bool _loadingProfile = false;
+
   Future<void> _onAuthUser(User? user) async {
     firebaseUser = user;
     _profilePoll?.cancel();
@@ -31,24 +34,58 @@ class AuthNotifier extends ChangeNotifier {
     if (user == null) {
       profile = null;
       loading = false;
+      _loadingProfile = false;
       notifyListeners();
       return;
     }
 
-    profile = await _authService.getUserProfile(user.uid);
-    loading = false;
+    await _loadProfile(user);
+  }
+
+  Future<void> _loadProfile(User user) async {
+    if (_loadingProfile) return;
+    _loadingProfile = true;
+    loading = true;
     notifyListeners();
+
+    try {
+      // Give Firebase Auth a moment to settle token state after sign-in.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      final fetched = await _authService.getUserProfile(user.uid);
+      if (fetched != null) {
+        profile = fetched;
+      } else {
+        // Profile fetch failed — keep any stale profile rather than nulling it out,
+        // so the UI doesn't get stuck. Will retry on next poll tick.
+        if (kDebugMode) {
+          debugPrint('[AuthNotifier] getUserProfile returned null — will retry on poll');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AuthNotifier] getUserProfile threw: $e');
+      }
+    } finally {
+      loading = false;
+      _loadingProfile = false;
+      notifyListeners();
+    }
 
     _profilePoll = Timer.periodic(const Duration(seconds: 15), (_) async {
       final u = firebaseUser;
       if (u == null) return;
-      final next = await _authService.getUserProfile(u.uid);
-      if (next == null) return;
-      profile = next;
-      if (next.role == 'subscriber' && !next.isActive) {
-        await _authService.signOutCurrent();
+      try {
+        final next = await _authService.getUserProfile(u.uid);
+        if (next == null) return;
+        profile = next;
+        if (next.role == 'subscriber' && !next.isActive) {
+          await _authService.signOutCurrent();
+        }
+        notifyListeners();
+      } catch (_) {
+        // Swallow poll errors — don't disrupt UI state.
       }
-      notifyListeners();
     });
 
     _subscriberHeartbeat = Timer.periodic(const Duration(minutes: 3), (_) async {
